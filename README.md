@@ -1,6 +1,6 @@
 # Rummy, in Haskell
 
-A learning project for me implementing the game of Rummy.
+An implementation of the game of Rummy.
 
 For a complete introduction of the rules to this card game, see https://cardgames.io/rummy.
 
