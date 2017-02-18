@@ -8,7 +8,7 @@ import Data.List
 -- | All known data about a game
 data Game = Game {
     phase  :: Phase   -- ^ Phase of play for the current player
-  , places :: [Place] -- ^ State of each player, !! 0 is current player
+  , places :: [Place] -- ^ State of all places, head is current player's place
   , table  :: Table   -- ^ Status of common play elements
   , rndGen :: StdGen  -- ^ Random number generator (updated after random events)
   }
@@ -57,8 +57,11 @@ mkGame gen names = deal $
 mkPlace :: String -> Place
 mkPlace n = Place n [] [] Nothing
 
+-- | Convert a game to its next state
+type Action = Game -> Game
+
 -- | Perform deal for all players
-deal :: Game -> Game
+deal :: Action
 deal game
     | numPlaces game == 2 = deal' 10 game -- 2 players get 10 cards each
     | numPlaces game <= 4 = deal' 7 game -- 3-4 players get 7 cards each
@@ -66,9 +69,6 @@ deal game
   where
     deal' :: Int -> Game -> Game
     deal' numCards = drawToDiscard . nextTurn . (dealPlaces numCards)
-
--- | A function converting a game to its next state
-type Action = Game -> Game
 
 -- | Flip a card from draw pile to discard pile
 drawToDiscard :: Action
@@ -136,11 +136,11 @@ allMoves (Game Win _ _ _) = [] -- No moves possible when game is over
 allMoves (Game Draw _ _ _) = sort [DrawFromDraws, DrawFromDiscards]
 allMoves g@(Game Meld _ _ _) = sort $ concat $ [meldMoves, addMoves, discardMoves] <*> [g]
 
--- | All original meld moves possible in game
+-- | All possible meld-playing moves
 meldMoves :: Game -> [Move]
 meldMoves g = filter (isDiscardPossible g) $ fmap PlayMeld (allMelds $ hand $ currentPlace g)
 
--- | All possible melds
+-- | All possible melds which can be composed from given cards
 allMelds :: Pile -> [Pile]
 allMelds cs = filter isMeld $ subsequences sorted where
   sorted = sort cs
@@ -187,7 +187,7 @@ addMoves g = filter (isDiscardPossible g) $
     isValidAdd (AddToMeld c ms) = isMeld $ sort (c:ms)
 
 -- | All possible discard moves.
--- Note: it is illegal to discard a card taken from the discard pile
+-- Note: it is illegal to discard a card just taken from the discard pile
 discardMoves :: Game -> [Move]
 discardMoves g = fmap DiscardCard $ filter (\c -> Just c /= discardTaken p) (hand $ p)
   where p = currentPlace g

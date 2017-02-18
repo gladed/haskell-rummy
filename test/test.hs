@@ -19,14 +19,13 @@ instance Arbitrary Suit where
   arbitrary = elements [ (minBound :: Suit) .. ]
 
 cardTests = testGroup "Card"
-  [ testProperty "black != red" $
-      \s -> (isBlackSuit s) /= (isRedSuit s)
-  , testProperty "shuffled /= shuffled" isShuffled
-  , testProperty "shuffledGen /= shuffledGen" isShuffledGen
-  , testCase "52 in deck" $
+  [
+    testCase "52 in deck" $
       (@=?) 52 $ length pack
   , testCase "12 face cards only" $
-      (@=?) 12 $ length $ filter (isFaceValue . value) pack
+      (@=?) 12 $ length $ filter ((>=Jack) . value) pack
+  , testProperty "shuffled /= shuffled" isShuffled
+  , testProperty "shuffledGen /= shuffledGen" isShuffledGen
   ]
 
 -- Thanks to http://stackoverflow.com/questions/2259926/testing-io-actions-with-monadic-quickcheck
