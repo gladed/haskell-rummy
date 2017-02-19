@@ -60,9 +60,6 @@ setMelds ms g = g { table = (table g) { melds = ms } }
 setPlace :: Place -> Game -> Game
 setPlace p g = g { places = p : (tail $ places g) }
 
-setPhase :: Phase -> Game -> Game
-setPhase p g = g { phase = p }
-
 fourKind = [(Card Ace Spade), (Card Ace Heart), (Card Ace Diamond), (Card Ace Club)]
 
 testMeldsHand = [(Card Nine Heart), (Card King Heart)]

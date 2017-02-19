@@ -77,7 +77,9 @@ drawToDiscard g@(Game _ _ t@(Table _ (d:ds) xs) _) =
 
 -- | Advance turn to the next player
 nextTurn :: Action
-nextTurn g@(Game _ (p:ps) _ _) = g { places = ps ++ [p], phase = Draw }
+nextTurn g | phase g == Win = g -- ^ No change if win already
+nextTurn g@(Game _ (p:ps) _ _) = g { places = ps ++ [p { discardTaken = Nothing } ], phase = Draw }
+  -- ^ Cycle place to back, clearing discardTaken
 
 -- | Deal all players the specified number of cards
 dealPlaces :: Int -> Action
@@ -87,11 +89,17 @@ dealPlaces numCards g = (repeatAction (numPlaces g) (nextTurn . (repeatAction nu
 repeatAction :: Int -> Action -> Action
 repeatAction n act g = iterate act g !! n
 
+-- | Act on current place (poor-man's lens)
+onCurrent :: (Place -> Place) -> Action
+onCurrent f g@(Game _ (p:ps) _ _) = g { places = (f p):ps }
+
 -- | Flip a card from draw pile to current player's hand
 drawToPlace :: Action
-drawToPlace g@(Game _ (p:ps) _ _) =
-  g2 { places = p { hand = c:(hand p) } : ps } where
-  (c, g2) = drawFromDraws g
+drawToPlace g = uncurry (onCurrent . takeCard) $ drawFromDraws g
+
+-- | Take a single card into hand
+takeCard :: Card -> Place -> Place
+takeCard c p@(Place _ hs _ _) = p { hand = c:hs }
 
 -- | Take a card out of draw pile, shuffling discards if necessary
 drawFromDraws :: Game -> (Card, Game)
@@ -195,43 +203,44 @@ discardMoves g = fmap DiscardCard $ filter (\c -> Just c /= discardTaken p) (han
 -- | Make a move
 doMove :: Move -> Action
 
-doMove DrawFromDraws g = (drawToPlace g) { phase = Meld }
+-- | Draw from draw pile
+doMove DrawFromDraws g = setPhase Meld $ drawToPlace g
 
--- | Draw from the discard pile
-doMove DrawFromDiscards g = let
-  (c, g2) = drawFromDiscards g
-  p = currentPlace g2
-  p2 = p { hand = c:(hand p), publics = c:(publics p), discardTaken = Just c }
-  in g2 { phase = Meld, places = p2:(tail $ places g2) }
+-- | Draw from the discard pile (visible to other players)
+doMove DrawFromDiscards g = setPhase Meld $ uncurry (onCurrent . takeDiscard) $ drawFromDiscards g
 
 -- | Play a complete meld to the table (merging existing melds if possible)
-doMove (PlayMeld m) g = g { phase = ph2, places = p:(tail $ places g), table = t2 }
-  where
-    p = dropCards m $ currentPlace g
-    t2 = tableWithMeld m $ table g
-    ph2 = if hand p == [] then Win else Meld
+doMove (PlayMeld m) g = checkWin $ ((onCurrent $ dropCards m) . (onTable $ tableWithMeld m)) g
 
 -- | Play a card into a specific meld
-doMove (AddToMeld c m) g = g { phase = ph2, places = p:(tail $ places g), table = t2 }
+doMove (AddToMeld c m) g = checkWin $ (onCurrent $ dropCards [c]) $ g { table = t }
   where
-    t = table g
-    p = dropCards [c] $ currentPlace g
-    t2 = t { melds = mergeMeld (sort $ c:m) (delete m (melds t)) } -- Table w/new meld
-    ph2 = if hand p == [] then Win else Meld
+    t = (table g) { melds = mergeMeld (sort $ c:m) (delete m (melds $ table g)) } -- Table w/new meld
 
 -- | Move discard out of hand and onto table
-doMove (DiscardCard c) g = g3 where
-  p = (dropCards [c] $ currentPlace g) { discardTaken = Nothing }
-  t = table g
-  t2 = t { discards = c:(discards t) }
-  ph2 = if hand p == [] then Win else Draw
-  g2 = g { phase = ph2, table = t2, places = p:(tail $ places g) }
-  g3 | ph2 == Win = g2
-     | otherwise = nextTurn g2
+doMove (DiscardCard c) g = nextTurn $ checkWin $ (addToDiscards c) $
+  (onCurrent $ dropCards[c]) $ g
 
--- | Drop the specified set of cards from a place
+-- | Given a Table transform, return corresponding Game transform
+onTable :: (Table -> Table) -> Action
+onTable f g@(Game _ _ t _) = g { table = f t }
+
+-- | Accept a card into current Place's hand from the discard pile
+takeDiscard :: Card -> Place -> Place
+takeDiscard c p@(Place _ hs pubs _) = p { hand = c:hs, publics = c:pubs, discardTaken = Just c }
+
+-- | Transition game to specified phase
+setPhase :: Phase -> Action
+setPhase p g = g { phase = p }
+
+-- | Transition game to Win if the current player has no more cards
+checkWin :: Action
+checkWin g | (hand $ currentPlace g) == [] = setPhase Win g
+checkWin g = g
+
+-- | Remove cards from a place
 dropCards :: Pile -> Place -> Place
-dropCards cs p = p { hand = (hand p) \\ cs, publics = (publics p) \\cs }
+dropCards cs p = p { hand = (hand p) \\ cs, publics = (publics p) \\ cs }
 
 -- Combine a meld into melds on the table
 tableWithMeld :: Pile -> Table -> Table
