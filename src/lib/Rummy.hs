@@ -14,13 +14,31 @@ data Game = Game {
   , rndGen :: StdGen  -- ^ Random number generator (updated after random events)
   }
 
+-- | Lens for Places in Game
+places_ :: Lens' Game [Place]
+places_ = lens places (\g newPlaces -> g { places = newPlaces })
+
 -- Current is a Lens for the topmost Place
 current :: Lens' Game Place
-current = lens (head . places) (\g cur -> g { places = cur:(tail $ places g) })
+current = places_ . head_
 
--- Lens for table, in which I violate convention and use _ backwards
+-- | Lens for head of list
+head_ :: Lens' [a] a
+head_ = lens head (\xs x -> x:(tail xs))
+
+-- | Lens for table (in which I violate convention and use _ backwards)
 table_ :: Lens' Game Table
 table_ = lens table (\g t -> g { table = t })
+
+-- | Lens for draw pile
+draws_ :: Lens' Game Pile
+draws_ = table_ . tableDraws where
+  tableDraws = lens draws (\t ds -> t { draws = ds })
+
+-- | Lens for discard pile
+discards_ :: Lens' Game Pile
+discards_ = table_ . tableDiscards where
+  tableDiscards = lens discards (\t xs -> t { discards = xs })
 
 -- StdGen is not showable so show Game without it
 instance Show Game where
@@ -59,8 +77,7 @@ data Table = Table {
 
 -- | Create a new ready-to-play game
 mkGame :: StdGen -> [String] -> Game
-mkGame gen names = deal $
-  Game Draw (mkPlace <$> names) (Table [] [] Deck.pack) gen
+mkGame gen names = deal $ Game Draw (mkPlace <$> names) (Table [] [] Deck.pack) gen
 
 -- | Create an empty place for a player
 mkPlace :: String -> Place
@@ -72,12 +89,11 @@ type Action = Game -> Game
 -- | Perform deal for all players
 deal :: Action
 deal game
-    | numPlaces game == 2 = deal' 10 game -- 2 players get 10 cards each
-    | numPlaces game <= 4 = deal' 7 game -- 3-4 players get 7 cards each
+    | numPlaces game == 2 = dealCards 10 game -- 2 players get 10 cards each
+    | numPlaces game <= 4 = dealCards 7 game -- 3-4 players get 7 cards each
     | otherwise = error $ "min 2, max 4 players; got " ++ show (numPlaces game)
   where
-    deal' :: Int -> Game -> Game
-    deal' numCards = drawToDiscard . nextTurn . (dealPlaces numCards)
+    dealCards numCards = drawToDiscard . nextTurn . (dealPlaces numCards)
 
 -- | Deal all players the specified number of cards
 dealPlaces :: Int -> Action
@@ -93,33 +109,37 @@ drawToDiscard = uncurry addToDiscards . drawFromDraws
 
 -- | Add a card to discard pile
 addToDiscards :: Card -> Action
-addToDiscards c = over table_ f where f t@(Table _ _ cs) = t { discards = c:cs }
+addToDiscards c = over discards_ (\xs -> c:xs)
 
 -- | Advance turn to the next player
 nextTurn :: Action
-nextTurn g | phase g == Win = g -- ^ No change if win already
-nextTurn g@(Game _ (p:ps) _ _) = g { places = ps ++ [p { discardTaken = Nothing } ], phase = Draw }
-  -- ^ Cycle place to back, clearing discardTaken
+nextTurn g | isWin g = g -- ^ No change if win already
+nextTurn g = setPhase Draw . (over places_ rotate) . over current (\p -> p { discardTaken = Nothing }) $ g 
+
+-- | Pop first element and push onto back
+rotate :: [a] -> [a]
+rotate (x:xs) = xs ++ [x]
 
 -- | Flip a card from draw pile to current player's hand
 drawToPlace :: Action
-drawToPlace = uncurry (over current . takeCard) . drawFromDraws
-
--- | Take a single card into hand
-takeCard :: Card -> Place -> Place
-takeCard c p@(Place _ hs _ _) = p { hand = c:hs }
+drawToPlace = uncurry takeCard . drawFromDraws where
+  takeCard c = over current f where f p = p { hand = c:(hand p) }
 
 -- | Take a card out of draw pile, shuffling discards if necessary
 drawFromDraws :: Game -> (Card, Game)
-drawFromDraws g@(Game _ _ t@(Table _ (d:ds) _) _) = (d, g { table = t { draws = ds } })
-drawFromDraws g = drawFromDraws $ shuffleDiscards g
+drawFromDraws g = case (view draws_ g) of
+  [] -> (drawFromDraws $ shuffleDiscards g) -- ^ No cards. Shuffle and try again. 
+  (d:ds) -> (d, over draws_ (\_ -> ds) g)   -- ^ Take top card from draw pile
+
+-- TODO: On third shuffle it's a DRAW
+-- TODO: no possible win it's a DRAW (no melds possible with either hand or cards in deck)
+-- TODO: Count "going Rummy" e.g. all melds on same turn
 
 -- | Shuffle discard pile and replace draw pile with it
 shuffleDiscards :: Action
-shuffleDiscards g@(Game _ _ t@(Table _ _ discardPile) gen) =
-    g { table = t { draws = newDrawPile, discards = [] }, rndGen = newGen }
+shuffleDiscards g = g { table = (table g) { draws = newDrawPile, discards = [] }, rndGen = newGen }
   where
-    (newDrawPile, newGen) = shuffleGen gen discardPile
+    (newDrawPile, newGen) = shuffleGen (rndGen g) (view discards_ g)
 
 -- | Return number of players in a game
 numPlaces :: Game -> Int
@@ -144,9 +164,10 @@ data Move =
 
 -- | All legal moves
 allMoves :: Game -> [Move]
-allMoves (Game Win _ _ _) = [] -- No moves possible when game is over
-allMoves (Game Draw _ _ _) = sort [DrawFromDraws, DrawFromDiscards]
-allMoves g@(Game Meld _ _ _) = sort $ concat $ [meldMoves, addMoves, discardMoves] <*> [g]
+allMoves g = sort $ case phase g of
+  Win -> []
+  Draw -> [DrawFromDraws, DrawFromDiscards]
+  Meld -> concat $ [meldMoves, addMoves, discardMoves] <*> [g]
 
 -- | All possible meld-playing moves
 meldMoves :: Game -> [Move]
