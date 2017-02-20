@@ -51,7 +51,7 @@ presentGame g =
     ++ "\nHand:\n  " ++ (showHand $ hand p) 
     ++ "\nMoves:\n  " ++ (showMoves $ allMoves g)
   where
-    p = currentPlace g
+    p = head $ places g
 
 showMoves :: [Move] -> String
 showMoves ms = intercalate "\n  " $ fmap (\(n,m) -> show n ++ ". " ++ show m) $ zip [1..] ms

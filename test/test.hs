@@ -92,9 +92,9 @@ rummyTests = testGroup "Rummy"
   , testCase "current player starts with two moves" $
       2 @=? (length $ allMoves $ gameFor 2)
   , testCase "current player can draw from draws" $
-      [Card Ace Spade] @=? (hand $ currentPlace $ play DrawFromDraws $ setDraws [Card Ace Spade] $ setPlace (mkPlace "b") $ gameFor 2)
+      [Card Ace Spade] @=? (hand $ head $ places $ play DrawFromDraws $ setDraws [Card Ace Spade] $ setPlace (mkPlace "b") $ gameFor 2)
   , testCase "current player can draw from discards" $
-      [Card King Spade] @=? (hand $ currentPlace $ play DrawFromDiscards $ setDiscards [Card King Spade] $ setPlace (mkPlace "b") $ gameFor 2)
+      [Card King Spade] @=? (hand $ head $ places $ play DrawFromDiscards $ setDiscards [Card King Spade] $ setPlace (mkPlace "b") $ gameFor 2)
       -- [DiscardCard $ Card Ace Spade, DiscardCard $ Card King Hearts] @=? (moves $ setPlace (Place "b" [Card King Hearts] Nothing) $ setDraws [Card Ace Spade] $ move DrawFromDrawPile $ gameFor 2)
   , testCase "find straights" $
       [ [(Card Ten Heart), (Card Jack Heart), (Card Queen Heart)]
@@ -120,7 +120,7 @@ rummyTests = testGroup "Rummy"
   , testCase "meld left on table" $
       [ singleMeld ] @=? (melds $ table $ doFirstMove $ setPhase Meld singleMeldGame)
   , testCase "meld gone from hand" $
-      [ ] @=? (hand $ currentPlace $ doFirstMove $ setPhase Meld singleMeldGame)
+      [ ] @=? (hand $ head $ places $ doFirstMove $ setPhase Meld singleMeldGame)
   , testCase "meld wins game" $
       Win @=? (phase $ play ((allMoves $ setPhase Meld singleMeldGame) !! 0) singleMeldGame)
   , testCase "melds are merged" $

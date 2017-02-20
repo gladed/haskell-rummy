@@ -14,31 +14,27 @@ data Game = Game {
   , rndGen :: StdGen  -- ^ Random number generator (updated after random events)
   }
 
--- | Lens for Places in Game
 places_ :: Lens' Game [Place]
 places_ = lens places (\g newPlaces -> g { places = newPlaces })
 
--- Current is a Lens for the topmost Place
+-- | Lens for current place
 current :: Lens' Game Place
 current = places_ . head_
 
--- | Lens for head of list
+hand_ :: Lens' Game Pile
+hand_ = current . (lens hand (\p h -> p { hand = h }))
+
 head_ :: Lens' [a] a
 head_ = lens head (\xs x -> x:(tail xs))
 
--- | Lens for table (in which I violate convention and use _ backwards)
 table_ :: Lens' Game Table
 table_ = lens table (\g t -> g { table = t })
 
--- | Lens for draw pile
 draws_ :: Lens' Game Pile
-draws_ = table_ . tableDraws where
-  tableDraws = lens draws (\t ds -> t { draws = ds })
+draws_ = table_ . (lens draws (\t ds -> t { draws = ds }))
 
--- | Lens for discard pile
 discards_ :: Lens' Game Pile
-discards_ = table_ . tableDiscards where
-  tableDiscards = lens discards (\t xs -> t { discards = xs })
+discards_ = table_ . (lens discards (\t xs -> t { discards = xs }))
 
 -- StdGen is not showable so show Game without it
 instance Show Game where
@@ -114,7 +110,8 @@ addToDiscards c = over discards_ (\xs -> c:xs)
 -- | Advance turn to the next player
 nextTurn :: Action
 nextTurn g | isWin g = g -- ^ No change if win already
-nextTurn g = setPhase Draw . (over places_ rotate) . over current (\p -> p { discardTaken = Nothing }) $ g 
+nextTurn g = setPhase Draw . (over places_ rotate) 
+  . over current (\p -> p { discardTaken = Nothing }) $ g 
 
 -- | Pop first element and push onto back
 rotate :: [a] -> [a]
@@ -123,7 +120,7 @@ rotate (x:xs) = xs ++ [x]
 -- | Flip a card from draw pile to current player's hand
 drawToPlace :: Action
 drawToPlace = uncurry takeCard . drawFromDraws where
-  takeCard c = over current f where f p = p { hand = c:(hand p) }
+  takeCard c = over hand_ (\h -> c:h)
 
 -- | Take a card out of draw pile, shuffling discards if necessary
 drawFromDraws :: Game -> (Card, Game)
@@ -147,11 +144,11 @@ numPlaces = length . places
 
 -- | Draw a single card from non-empty discard pile
 drawFromDiscards :: Game -> (Card, Game)
-drawFromDiscards g@(Game _ _ t@(Table _ _ (c:cs)) _) = (c, g { table = t { discards = cs } })
+drawFromDiscards = onTuple (head . view discards_, over discards_ (\(c:cs) -> cs))
 
--- | The current place (player)
-currentPlace :: Game -> Place
-currentPlace g = head $ places g
+-- | Apply to both functions in a tuple
+onTuple :: (a -> b, a -> c) -> a -> (b, c)
+onTuple (f1, f2) a = (f1 a, f2 a)
 
 -- | Type for all possible game moves
 data Move =
@@ -171,7 +168,7 @@ allMoves g = sort $ case phase g of
 
 -- | All possible meld-playing moves
 meldMoves :: Game -> [Move]
-meldMoves g = filter (isDiscardPossible g) $ fmap PlayMeld (allMelds $ hand $ currentPlace g)
+meldMoves g = filter (canDiscardAfter g) $ fmap PlayMeld (allMelds $ view hand_ g)
 
 -- | All possible melds which can be composed from given cards
 allMelds :: Pile -> [Pile]
@@ -183,12 +180,15 @@ isMeld :: Pile -> Bool
 isMeld cs = (3 <= (length $ take 3 cs)) && (isRun cs || isKind cs)
 
 -- | True if the move, applied to a game, still allows discard
-isDiscardPossible :: Game -> Move -> Bool
-isDiscardPossible (Game _ ((Place _ _ _ Nothing):_) _ _) _ = True
-isDiscardPossible g m = case play m g of
-  g2@(Game _ ((Place _ (c:[]) _ (Just d)):_) _ _) -> d /= c || any (isAddToMeldOf c) (addMoves g2)
-  -- ^ False if single non-meldable card must be discarded
-  _ -> True
+canDiscardAfter :: Game -> Move -> Bool
+canDiscardAfter g m = canDiscard $ play m g where
+  canDiscard g = case view hand_ g of
+    (c:[]) -> (isDiscardable g c) || any (isAddToMeldOf c) (addMoves g)
+    _ -> True
+
+-- | True if the specific card is legal to discard from the current hand
+isDiscardable :: Game -> Card -> Bool
+isDiscardable g c = Just c /= (discardTaken $ view current g)
 
 -- | True if the move is an AddToMeld using the specified card
 isAddToMeldOf :: Card -> Move -> Bool
@@ -212,23 +212,21 @@ isKind ((Card v _):cs) = all (\c -> (value c) == v) cs
 
 -- | All possible add-to-meld moves
 addMoves :: Game -> [Move]
-addMoves g = filter (isDiscardPossible g) $
-    filter isValidAdd ((fmap AddToMeld handCards) <*> tableMelds)
+addMoves g = filter (canDiscardAfter g) $
+    filter isValidAdd ((fmap AddToMeld (view hand_ g)) <*> tableMelds)
   where
-    handCards = hand $ head $ places g
     tableMelds = melds $ table g
     isValidAdd (AddToMeld c ms) = isMeld $ sort (c:ms)
 
 -- | All possible discard moves.
 -- Note: it is illegal to discard a card just taken from the discard pile
 discardMoves :: Game -> [Move]
-discardMoves g = fmap DiscardCard $ filter (\c -> Just c /= discardTaken p) (hand $ p)
-  where p = currentPlace g
+discardMoves g = fmap DiscardCard $ filter (isDiscardable g) $ view hand_ g
 
+-- Make all moves playable
 class Play a where
   play :: a -> Action
 
--- Play any kind of move here
 instance Play Move where
   play DrawFromDraws = setPhase Meld . drawToPlace
   play DrawFromDiscards = setPhase Meld . uncurry takeDiscard . drawFromDiscards
@@ -239,7 +237,7 @@ instance Play Move where
 -- | Accept a card into current Place's hand from the discard pile
 takeDiscard :: Card -> Action
 takeDiscard c = over current take where
-  take p@(Place _ hs pubs _) = p { hand = c:hs, publics = c:pubs, discardTaken = Just c }
+  take p = p { hand = c:(hand p), publics = c:(publics p), discardTaken = Just c }
 
 -- | Transition game to specified phase
 setPhase :: Phase -> Action
@@ -247,7 +245,7 @@ setPhase p g = g { phase = p }
 
 -- | Transition game to Win if the current player has no more cards
 checkWin :: Action
-checkWin g | (hand $ currentPlace g) == [] = setPhase Win g
+checkWin g | (view hand_ g) == [] = setPhase Win g
 checkWin g = g
 
 -- | Remove cards from the current place
@@ -257,11 +255,11 @@ dropCards cs = over current drop where
 
 -- | Remove a single meld from the table
 dropMeld :: Pile -> Action
-dropMeld m = over table_ f where f t = t { melds = (delete m (melds t)) }
+dropMeld m = over table_ (\t -> t { melds = (delete m (melds t)) })
 
 -- | Put a new meld on the table
 tableWithMeld :: Pile -> Action
-tableWithMeld m = over table_ f where f t = t { melds = mergeMelds m (melds t) }
+tableWithMeld m = over table_ (\t -> t { melds = mergeMelds m (melds t) })
 
 -- | Add a valid meld to a list of melds, combining it with an existing one if possible
 mergeMelds :: Pile -> [Pile] -> [Pile]
