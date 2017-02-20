@@ -40,7 +40,7 @@ gameLoop :: Game -> IO ()
 gameLoop g = do
   putStrLn "\n*** NEW TURN *** "
   g2 <- userInputLoop g
-  if (isOver g2) then putStrLn "Game over!" else gameLoop g2
+  if (isOver g2) then putStrLn ("Game over! Scores: " ++ (show $ score g2)) else gameLoop g2
 
 
 presentGame :: Game -> String
