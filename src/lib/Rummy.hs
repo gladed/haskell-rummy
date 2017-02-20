@@ -17,25 +17,6 @@ data Game = Game {
   , rndGen   :: StdGen  -- ^ Random number generator (updated after random events)
   }
 
--- | Lens for current place
-current :: Lens' Game Place
-current = places_ . head_
-
-places_ :: Lens' Game [Place]
-places_ = lens places (\g newPlaces -> g { places = newPlaces })
-
-hand_ :: Lens' Game Pile
-hand_ = current . (lens hand (\p h -> p { hand = h }))
-
-head_ :: Lens' [a] a
-head_ = lens head (\xs x -> x:(tail xs))
-
-draws_ :: Lens' Game Pile
-draws_ = lens draws (\g newDraws -> g { draws = newDraws })
-
-discards_ :: Lens' Game Pile
-discards_ = lens discards (\g xs -> g { discards = xs })
-
 -- StdGen is not showable so show Game without it
 instance Show Game where
   show g = "Game {"
@@ -60,11 +41,33 @@ data Place = Place {
   , hand         :: Pile       -- ^ Cards in player's hand
   , publics      :: Pile       -- ^ Cards in hand that were visibly drawn (from discard pile)
   , discardTaken :: Maybe Card -- ^ Player drew this card from discard pile
+  , rummy        :: Bool       -- ^ Player is eligible for rummy
   }
   deriving (Eq, Show)
 
 -- | An ordered group of cards
 type Pile = [Card]
+
+-- | Lens for current place
+current :: Lens' Game Place
+current = places_ . head_
+
+-- | Lens on current player's hand
+hand_ :: Lens' Game Pile
+hand_ = current . (lens hand (\p h -> p { hand = h }))
+
+-- | A lens on the head of a list
+head_ :: Lens' [a] a
+head_ = lens head (\xs x -> x:(tail xs))
+
+places_ :: Lens' Game [Place]
+places_ = lens places (\g newPlaces -> g { places = newPlaces })
+
+draws_ :: Lens' Game Pile
+draws_ = lens draws (\g newDraws -> g { draws = newDraws })
+
+discards_ :: Lens' Game Pile
+discards_ = lens discards (\g xs -> g { discards = xs })
 
 -- | Create a new ready-to-play game
 mkGame :: StdGen -> [String] -> Game
@@ -72,7 +75,7 @@ mkGame gen names = deal $ Game (mkPlace <$> names) Start [] [] Deck.pack 0 gen
 
 -- | Create an empty place for a player
 mkPlace :: String -> Place
-mkPlace n = Place n [] [] Nothing
+mkPlace n = Place n [] [] Nothing True
 
 -- | Convert a game to its next state
 type Action = Game -> Game
@@ -109,6 +112,10 @@ nextTurn g | isOver g = g               -- ^ Already terminal
   | otherwise = setPhase Start . (over places_ rotate) 
       . over current (\p -> p { discardTaken = Nothing }) $ g 
 
+-- | If game isn't terminal then disable rummy bit for the current place
+notRummy g | isOver g = g
+  | otherwise = over current (\p -> p { rummy = False }) g
+
 -- | Pop first element and push onto back
 rotate :: [a] -> [a]
 rotate (x:xs) = xs ++ [x]
@@ -124,12 +131,10 @@ drawFromDraws g = case (view draws_ g) of
   [] -> (drawFromDraws $ shuffleDiscards g) -- ^ No cards. Shuffle and try again. 
   (d:ds) -> (d, over draws_ (\_ -> ds) g)   -- ^ Take top card from draw pile
 
--- TODO: no possible win it's a DRAW (no melds possible with either hand or cards in deck)
--- TODO: Count "going Rummy" e.g. all melds on same turn
-
 -- | Shuffle discard pile and replace draw pile with it
 shuffleDiscards :: Action
-shuffleDiscards g = g { draws = newDrawPile, discards = [], shuffles = (shuffles g) + 1, rndGen = newGen }
+shuffleDiscards g = g { draws = newDrawPile, discards = [], shuffles = (shuffles g) + 1, 
+    rndGen = newGen }
   where
     (newDrawPile, newGen) = shuffleGen (rndGen g) (view discards_ g)
 
@@ -226,7 +231,7 @@ instance Play Move where
   play DrawFromDiscards = setPhase Meld . uncurry takeDiscard . drawFromDiscards
   play (PlayMeld m) = checkState . dropCards m . addMeld m
   play (AddToMeld c m) = checkState . dropCards [c] . addMeld m . dropMeld m
-  play (DiscardCard c) = nextTurn . checkState . addToDiscards c . dropCards [c]
+  play (DiscardCard c) = nextTurn . notRummy . checkState . addToDiscards c . dropCards [c]
 
 -- | Accept a card into current Place's hand from the discard pile
 takeDiscard :: Card -> Action
@@ -271,3 +276,22 @@ isOver g = case phase g of
   Draw -> True
   _ -> False
 
+-- | Given the terminating state of a game, calculates scores for each player
+score :: Game -> [(String, Int)]
+score g 
+    | phase g == Win = (name (view current g), maybeDouble $ allPoints g):loserPoints
+    | otherwise = fmap noPoints $ places g
+  where
+    noPoints p = (name p, 0)
+    maybeDouble = if rummy (view current g) then (*2) else id
+    loserPoints = fmap noPoints (tail $ places g)
+
+-- | Points present in all hands   
+allPoints :: Game -> Int
+allPoints = foldl (+) 0 . fmap points . concat . fmap hand . places
+
+-- | The number of points for a card
+points :: Card -> Int
+points c 
+  | (value c) >= Jack = 10
+  | otherwise = 1 + (fromEnum $ value c)

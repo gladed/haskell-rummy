@@ -61,7 +61,10 @@ setPlace :: Place -> Game -> Game
 setPlace p g = g { places = p : (tail $ places g) }
 
 setHand :: Pile -> Game -> Game
-setHand pile g = g { places = (head $ places g) { hand = pile } : (tail $ places g) }
+setHand pile g = setPlace ((head $ places g) { hand = pile }) g
+
+setRummy :: Bool -> Game -> Game
+setRummy r g = setPlace ((head $ places g) { rummy = r }) g
 
 fourKind = [(Card Ace Spade), (Card Ace Heart), (Card Ace Diamond), (Card Ace Club)]
 
@@ -79,7 +82,7 @@ expectedMelds = [
 mergableMeld = sort [ (Card Three Club), (Card Four  Club), (Card Five Club)  ]
 
 singleMeld   = sort [ (Card Six   Club), (Card Seven Club), (Card Eight Club) ]
-singleMeldGame = setPlace (Place "b" singleMeld [] Nothing) $ gameFor 2
+singleMeldGame = setPlace (Place "b" singleMeld [] Nothing False) $ gameFor 2
 
 doFirstMove g = play (allMoves g !! 0) g
 
@@ -111,13 +114,13 @@ rummyTests = testGroup "Rummy"
       (sort $ allMelds fourKind))
   , testCase "find meld moves" $
       [ PlayMeld [(Card Ten Heart), (Card Jack Heart), (Card Queen Heart)] ] @=?
-        (meldMoves $ setPlace (Place "b" [(Card Ten Heart), (Card Jack Heart), (Card Queen Heart)] [] Nothing) $ gameFor 3)
+        (meldMoves $ setPlace (Place "b" [(Card Ten Heart), (Card Jack Heart), (Card Queen Heart)] [] Nothing False) $ gameFor 3)
   , testCase "find add moves" $
       expectedMelds @=?
-        (addMoves $ setPlace (Place "b" testMeldsHand [] Nothing) $ setMelds testMelds $ gameFor 3)
+        (addMoves $ setPlace (Place "b" testMeldsHand [] Nothing False) $ setMelds testMelds $ gameFor 3)
   , testCase "find discard moves" $
       [ (DiscardCard (Card Ten Club)) ] @=?
-        (discardMoves $ setPlace (Place "b" [(Card Ten Club), (Card Two Heart)] [] (Just (Card Two Heart))) $ gameFor 2)
+        (discardMoves $ setPlace (Place "b" [(Card Ten Club), (Card Two Heart)] [] (Just (Card Two Heart)) False) $ gameFor 2)
   , testCase "meld available" $
       (PlayMeld singleMeld) @=? ((allMoves $ setPhase Meld singleMeldGame) !! 0)
   , testCase "meld left in play" $
@@ -133,20 +136,20 @@ rummyTests = testGroup "Rummy"
           (DiscardCard (Card Three Club))
         , (DiscardCard (Card Four Club))
         , (DiscardCard (Card Five Club)) ]) @=?
-      (allMoves $ setPhase Meld $ setPlace (Place "b" [(Card Three Club), (Card Four Club), (Card Five Club), (Card Ace Heart)] [] (Just (Card Ace Heart))) $ gameFor 2)
+      (allMoves $ setPhase Meld $ setPlace (Place "b" [(Card Three Club), (Card Four Club), (Card Five Club), (Card Ace Heart)] [] (Just (Card Ace Heart)) False) $ gameFor 2)
   , testCase "add if meldable discard" $
       (sort [
           (DiscardCard (Card Three Club))
         , (AddToMeld (Card Three Club) [(Card Four Club), (Card Five Club), (Card Six Club)])
         , (AddToMeld (Card Seven Club) [(Card Four Club), (Card Five Club), (Card Six Club)])
       ]) @=?
-      (allMoves $ setMelds [[(Card Four Club), (Card Five Club), (Card Six Club)]] $ setPhase Meld $ setPlace (Place "b" [(Card Three Club), (Card Seven Club)] [] (Just (Card Seven Club))) $ gameFor 2)
+      (allMoves $ setMelds [[(Card Four Club), (Card Five Club), (Card Six Club)]] $ setPhase Meld $ setPlace (Place "b" [(Card Three Club), (Card Seven Club)] [] (Just (Card Seven Club)) False) $ gameFor 2)
   , testCase "no add if no discard" $
       (sort [ (DiscardCard (Card Three Club)) ]) @=?
       (allMoves
          $ setMelds [[(Card Four Club), (Card Five Club), (Card Six Club)]]
          $ setPhase Meld
-         $ setPlace (Place "b" [(Card Three Club), (Card Ace Heart)] [] (Just (Card Ace Heart)))
+         $ setPlace (Place "b" [(Card Three Club), (Card Ace Heart)] [] (Just (Card Ace Heart)) False)
          $ gameFor 2)
 
   , testCase "detect non-over" $
@@ -156,7 +159,7 @@ rummyTests = testGroup "Rummy"
       True @=? (isOver
         $ doFirstMove
         $ setPhase Meld
-        $ setPlace (Place "b" [(Card Ace Spade)] [] Nothing)
+        $ setPlace (Place "b" [(Card Ace Spade)] [] Nothing False)
         $ gameFor 2)
 
   , testCase "shuffle discards" $
@@ -173,5 +176,17 @@ rummyTests = testGroup "Rummy"
        $ doFirstMove $ doFirstMove
        $ setDraws [] $ setDiscards [(Card Six Heart), (Card Five Heart)]
        $ setHand [(Card Three Diamond)]
+       $ gameFor 2)
+  , testCase "points" $
+     [("a", 12), ("b", 0)] @=? (score
+       $ setRummy False $ setHand []
+       $ setPhase Win $ nextTurn
+       $ setHand [(Card Two Diamond), (Card Queen Heart)]
+       $ gameFor 2)
+  , testCase "double rummy points" $
+     [("a", 24), ("b", 0)] @=? (score
+       $ setHand []
+       $ setPhase Win $ nextTurn
+       $ setHand [(Card Two Diamond), (Card Queen Heart)]
        $ gameFor 2)
   ]
