@@ -46,8 +46,8 @@ presentGame :: Game -> String
 presentGame g = 
        "\n=== Player " ++ (name p) ++ " ==="
     ++ "\nPlayers: " ++ (intercalate ", " $ fmap (\op -> (name op) ++ " with " ++ (show $ length $ hand op)) (tail $ places g))
-    ++ "\nMelds on table: " ++ (show $ melds $ table g)
-    ++ "\nDiscard: " ++ (showTopCard $ discards $ table g)
+    ++ "\nMelds in play: " ++ (show $ melds g)
+    ++ "\nDiscard: " ++ (showTopCard $ discards g)
     ++ "\nHand:\n  " ++ (showHand $ hand p) 
     ++ "\nMoves:\n  " ++ (showMoves $ allMoves g)
   where

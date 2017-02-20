@@ -8,16 +8,18 @@ import Lens.Simple
 
 -- | All known data about a game
 data Game = Game {
-    phase  :: Phase   -- ^ Phase of play for the current player
-  , places :: [Place] -- ^ State of all places, head is current player's place
-  , table :: Table   -- ^ Status of common play elements
-  , rndGen :: StdGen  -- ^ Random number generator (updated after random events)
+    places   :: [Place] -- ^ State of all places, head is current player's place
+  , phase    :: Phase   -- ^ Phase of play for the current player
+  , melds    :: [Pile] -- ^ Melds in play (visible to all)
+  , draws    :: Pile   -- ^ Draw pile (invisible)
+  , discards :: Pile   -- ^ Discard pile (visible to all)
+  , rndGen   :: StdGen  -- ^ Random number generator (updated after random events)
   }
 
 places_ :: Lens' Game [Place]
 places_ = lens places (\g newPlaces -> g { places = newPlaces })
 
--- | Lens for current place
+-- | Lens for current places
 current :: Lens' Game Place
 current = places_ . head_
 
@@ -27,21 +29,20 @@ hand_ = current . (lens hand (\p h -> p { hand = h }))
 head_ :: Lens' [a] a
 head_ = lens head (\xs x -> x:(tail xs))
 
-table_ :: Lens' Game Table
-table_ = lens table (\g t -> g { table = t })
-
 draws_ :: Lens' Game Pile
-draws_ = table_ . (lens draws (\t ds -> t { draws = ds }))
+draws_ = lens draws (\g newDraws -> g { draws = newDraws })
 
 discards_ :: Lens' Game Pile
-discards_ = table_ . (lens discards (\t xs -> t { discards = xs }))
+discards_ = lens discards (\g xs -> g { discards = xs })
 
 -- StdGen is not showable so show Game without it
 instance Show Game where
   show g = "Game {"
     ++ "phase = " ++ (show $ phase g)
     ++ ", places = " ++ (show $ places g)
-    ++ ", table = " ++ (show $ table g)
+    ++ ", melds = " ++ (show $ melds g)
+    ++ ", draws = " ++ (show $ draws g)
+    ++ ", discards = " ++ (show $ discards g)
     ++ "}"
 
 -- | Phases of play for each player
@@ -63,17 +64,9 @@ data Place = Place {
 -- | An ordered group of cards
 type Pile = [Card]
 
--- | Resources shared by all players
-data Table = Table {
-    melds    :: [Pile] -- ^ Melds in play (visible to all)
-  , draws    :: Pile   -- ^ Draw pile (invisible)
-  , discards :: Pile   -- ^ Discard pile (visible to all)
-  }
-  deriving (Eq, Show)
-
 -- | Create a new ready-to-play game
 mkGame :: StdGen -> [String] -> Game
-mkGame gen names = deal $ Game Draw (mkPlace <$> names) (Table [] [] Deck.pack) gen
+mkGame gen names = deal $ Game (mkPlace <$> names) Draw [] [] Deck.pack gen
 
 -- | Create an empty place for a player
 mkPlace :: String -> Place
@@ -134,7 +127,7 @@ drawFromDraws g = case (view draws_ g) of
 
 -- | Shuffle discard pile and replace draw pile with it
 shuffleDiscards :: Action
-shuffleDiscards g = g { table = (table g) { draws = newDrawPile, discards = [] }, rndGen = newGen }
+shuffleDiscards g = g { draws = newDrawPile, discards = [], rndGen = newGen }
   where
     (newDrawPile, newGen) = shuffleGen (rndGen g) (view discards_ g)
 
@@ -154,7 +147,7 @@ onTuple (f1, f2) a = (f1 a, f2 a)
 data Move =
     DrawFromDraws       -- ^ Take an unknown card from the draw pile
   | DrawFromDiscards    -- ^ Take the top discard card
-  | PlayMeld Pile       -- ^ Put a 3+ straight or a 3+ kind on the table
+  | PlayMeld Pile       -- ^ Put a 3+ straight or a 3+ kind into melds
   | AddToMeld Card Pile -- ^ Play a card extending an existing meld
   | DiscardCard Card    -- ^ Put a card on top of discard pile, proceed to next player
   deriving (Eq, Show, Ord)
@@ -213,9 +206,8 @@ isKind ((Card v _):cs) = all (\c -> (value c) == v) cs
 -- | All possible add-to-meld moves
 addMoves :: Game -> [Move]
 addMoves g = filter (canDiscardAfter g) $
-    filter isValidAdd ((fmap AddToMeld (view hand_ g)) <*> tableMelds)
+    filter isValidAdd ((fmap AddToMeld (view hand_ g)) <*> (melds g))
   where
-    tableMelds = melds $ table g
     isValidAdd (AddToMeld c ms) = isMeld $ sort (c:ms)
 
 -- | All possible discard moves.
@@ -230,8 +222,8 @@ class Play a where
 instance Play Move where
   play DrawFromDraws = setPhase Meld . drawToPlace
   play DrawFromDiscards = setPhase Meld . uncurry takeDiscard . drawFromDiscards
-  play (PlayMeld m) = checkWin . dropCards m . tableWithMeld m
-  play (AddToMeld c m) = checkWin . dropCards [c] . tableWithMeld m . dropMeld m
+  play (PlayMeld m) = checkWin . dropCards m . addMeld m
+  play (AddToMeld c m) = checkWin . dropCards [c] . addMeld m . dropMeld m
   play (DiscardCard c) = nextTurn . checkWin . addToDiscards c . dropCards [c]
 
 -- | Accept a card into current Place's hand from the discard pile
@@ -253,13 +245,13 @@ dropCards :: Pile -> Action
 dropCards cs = over current drop where
   drop p = p { hand = (hand p) \\ cs, publics = (publics p) \\ cs }
 
--- | Remove a single meld from the table
+-- | Remove a single meld from
 dropMeld :: Pile -> Action
-dropMeld m = over table_ (\t -> t { melds = (delete m (melds t)) })
+dropMeld m g = g { melds = (delete m (melds g)) }
 
--- | Put a new meld on the table
-tableWithMeld :: Pile -> Action
-tableWithMeld m = over table_ (\t -> t { melds = mergeMelds m (melds t) })
+-- | Put a new meld into play
+addMeld :: Pile -> Action
+addMeld m g = g { melds = mergeMelds m (melds g) }
 
 -- | Add a valid meld to a list of melds, combining it with an existing one if possible
 mergeMelds :: Pile -> [Pile] -> [Pile]

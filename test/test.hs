@@ -49,13 +49,13 @@ gameFor num = mkGame (mkStdGen 777) names where
   names = (:[]) <$> take num ['a'..]
 
 setDraws :: [Card] -> Game -> Game
-setDraws cs g = g { table = (table g) { draws = cs } }
+setDraws cs g = g { draws = cs } 
 
 setDiscards :: [Card] -> Game -> Game
-setDiscards cs g = g { table = (table g) { discards = cs } }
+setDiscards cs g = g { discards = cs }
 
 setMelds :: [[Card]] -> Game -> Game
-setMelds ms g = g { table = (table g) { melds = ms } }
+setMelds ms g = g { melds = ms }
 
 setPlace :: Place -> Game -> Game
 setPlace p g = g { places = p : (tail $ places g) }
@@ -88,7 +88,7 @@ rummyTests = testGroup "Rummy"
   , testCase "b is first player" $
       "b" @=? (name $ head $ places $ gameFor 3)
   , testCase "discard has one card" $
-      1 @=? (length $ discards $ table $ gameFor 2)
+      1 @=? (length $ discards $ gameFor 2)
   , testCase "current player starts with two moves" $
       2 @=? (length $ allMoves $ gameFor 2)
   , testCase "current player can draw from draws" $
@@ -117,14 +117,14 @@ rummyTests = testGroup "Rummy"
         (discardMoves $ setPlace (Place "b" [(Card Ten Club), (Card Two Heart)] [] (Just (Card Two Heart))) $ gameFor 2)
   , testCase "meld available" $
       (PlayMeld singleMeld) @=? ((allMoves $ setPhase Meld singleMeldGame) !! 0)
-  , testCase "meld left on table" $
-      [ singleMeld ] @=? (melds $ table $ doFirstMove $ setPhase Meld singleMeldGame)
+  , testCase "meld left in play" $
+      [ singleMeld ] @=? (melds $ doFirstMove $ setPhase Meld singleMeldGame)
   , testCase "meld gone from hand" $
       [ ] @=? (hand $ head $ places $ doFirstMove $ setPhase Meld singleMeldGame)
   , testCase "meld wins game" $
       Win @=? (phase $ play ((allMoves $ setPhase Meld singleMeldGame) !! 0) singleMeldGame)
   , testCase "melds are merged" $
-      [ sort (singleMeld ++ mergableMeld) ] @=? (melds $ table $ play ((allMoves $ setPhase Meld singleMeldGame) !! 0) $ setMelds [ mergableMeld ] singleMeldGame)
+      [ sort (singleMeld ++ mergableMeld) ] @=? (melds $ play ((allMoves $ setPhase Meld singleMeldGame) !! 0) $ setMelds [ mergableMeld ] singleMeldGame)
   , testCase "no meld if no discard" $
       (sort [
           (DiscardCard (Card Three Club))
@@ -158,7 +158,6 @@ rummyTests = testGroup "Rummy"
 
   , testCase "shuffle discards" $
       1 @=? (length $ draws
-                $ table
                 $ doFirstMove
                 $ setDraws []
                 $ setDiscards [(Card Six Heart), (Card Ace Spade)]
