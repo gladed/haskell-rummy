@@ -60,6 +60,9 @@ setMelds ms g = g { melds = ms }
 setPlace :: Place -> Game -> Game
 setPlace p g = g { places = p : (tail $ places g) }
 
+setHand :: Pile -> Game -> Game
+setHand pile g = g { places = (head $ places g) { hand = pile } : (tail $ places g) }
+
 fourKind = [(Card Ace Spade), (Card Ace Heart), (Card Ace Diamond), (Card Ace Club)]
 
 testMeldsHand = [(Card Nine Heart), (Card King Heart)]
@@ -162,4 +165,13 @@ rummyTests = testGroup "Rummy"
                 $ setDraws []
                 $ setDiscards [(Card Six Heart), (Card Ace Spade)]
                 $ gameFor 2)
+  , testCase "shuffle twice then discard" $
+     Draw @=? (phase 
+       $ doFirstMove $ doFirstMove
+       $ setDraws [] $ setDiscards [(Card Ace Club), (Card Nine Club)]
+       $ setHand [(Card Ace Spade)]
+       $ doFirstMove $ doFirstMove
+       $ setDraws [] $ setDiscards [(Card Six Heart), (Card Five Heart)]
+       $ setHand [(Card Three Diamond)]
+       $ gameFor 2)
   ]

@@ -10,9 +10,10 @@ import Lens.Simple
 data Game = Game {
     places   :: [Place] -- ^ State of all places, head is current player's place
   , phase    :: Phase   -- ^ Phase of play for the current player
-  , melds    :: [Pile] -- ^ Melds in play (visible to all)
-  , draws    :: Pile   -- ^ Draw pile (invisible)
-  , discards :: Pile   -- ^ Discard pile (visible to all)
+  , melds    :: [Pile]  -- ^ Melds in play (visible to all)
+  , draws    :: Pile    -- ^ Draw pile (invisible)
+  , discards :: Pile    -- ^ Discard pile (visible to all)
+  , shuffles :: Int     -- ^ Number of shuffles in game (max 2)
   , rndGen   :: StdGen  -- ^ Random number generator (updated after random events)
   }
 
@@ -50,7 +51,7 @@ data Phase =
     Start   -- ^ Player must draw from discard or from draw pile
   | Meld    -- ^ Player may play or add to any number of melds or discard
   | Win     -- ^ Game is over because current player has won
-  | Draw    -- ^ Game is over because nobody can win
+  | Draw    -- ^ Game is over because nobody can win (stalemate)
   deriving (Eq, Show, Enum)
 
 -- | Player's current state in the game
@@ -67,7 +68,7 @@ type Pile = [Card]
 
 -- | Create a new ready-to-play game
 mkGame :: StdGen -> [String] -> Game
-mkGame gen names = deal $ Game (mkPlace <$> names) Start [] [] Deck.pack gen
+mkGame gen names = deal $ Game (mkPlace <$> names) Start [] [] Deck.pack 0 gen
 
 -- | Create an empty place for a player
 mkPlace :: String -> Place
@@ -103,9 +104,10 @@ addToDiscards c = over discards_ (\xs -> c:xs)
 
 -- | Advance turn to the next player
 nextTurn :: Action
-nextTurn g | isOver g = g -- ^ No change if game in terminal state
-nextTurn g = setPhase Start . (over places_ rotate) 
-  . over current (\p -> p { discardTaken = Nothing }) $ g 
+nextTurn g | isOver g = g               -- ^ Already terminal
+  | shuffles g > 2 = g { phase = Draw } -- ^ Stalemate if too many shuffles
+  | otherwise = setPhase Start . (over places_ rotate) 
+      . over current (\p -> p { discardTaken = Nothing }) $ g 
 
 -- | Pop first element and push onto back
 rotate :: [a] -> [a]
@@ -122,13 +124,12 @@ drawFromDraws g = case (view draws_ g) of
   [] -> (drawFromDraws $ shuffleDiscards g) -- ^ No cards. Shuffle and try again. 
   (d:ds) -> (d, over draws_ (\_ -> ds) g)   -- ^ Take top card from draw pile
 
--- TODO: On third shuffle it's a DRAW
 -- TODO: no possible win it's a DRAW (no melds possible with either hand or cards in deck)
 -- TODO: Count "going Rummy" e.g. all melds on same turn
 
 -- | Shuffle discard pile and replace draw pile with it
 shuffleDiscards :: Action
-shuffleDiscards g = g { draws = newDrawPile, discards = [], rndGen = newGen }
+shuffleDiscards g = g { draws = newDrawPile, discards = [], shuffles = (shuffles g) + 1, rndGen = newGen }
   where
     (newDrawPile, newGen) = shuffleGen (rndGen g) (view discards_ g)
 
