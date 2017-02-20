@@ -21,7 +21,7 @@ userInputLoop g = do
     userInputLoop g
   else do
     let userMove = moves !! (moveNum-1)
-    let g2 = doMove userMove g
+    let g2 = play userMove g
     case (isWin g2, userMove) of
       (True, _) -> return g2
       (_, (DiscardCard _)) -> return g2

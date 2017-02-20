@@ -78,7 +78,7 @@ mergableMeld = sort [ (Card Three Club), (Card Four  Club), (Card Five Club)  ]
 singleMeld   = sort [ (Card Six   Club), (Card Seven Club), (Card Eight Club) ]
 singleMeldGame = setPlace (Place "b" singleMeld [] Nothing) $ gameFor 2
 
-doFirstMove g = doMove (allMoves g !! 0) g
+doFirstMove g = play (allMoves g !! 0) g
 
 rummyTests = testGroup "Rummy"
   [ testCase "10 cards in hand for all players of 2-player game" $
@@ -92,9 +92,9 @@ rummyTests = testGroup "Rummy"
   , testCase "current player starts with two moves" $
       2 @=? (length $ allMoves $ gameFor 2)
   , testCase "current player can draw from draws" $
-      [Card Ace Spade] @=? (hand $ currentPlace $ doMove DrawFromDraws $ setDraws [Card Ace Spade] $ setPlace (mkPlace "b") $ gameFor 2)
+      [Card Ace Spade] @=? (hand $ currentPlace $ play DrawFromDraws $ setDraws [Card Ace Spade] $ setPlace (mkPlace "b") $ gameFor 2)
   , testCase "current player can draw from discards" $
-      [Card King Spade] @=? (hand $ currentPlace $ doMove DrawFromDiscards $ setDiscards [Card King Spade] $ setPlace (mkPlace "b") $ gameFor 2)
+      [Card King Spade] @=? (hand $ currentPlace $ play DrawFromDiscards $ setDiscards [Card King Spade] $ setPlace (mkPlace "b") $ gameFor 2)
       -- [DiscardCard $ Card Ace Spade, DiscardCard $ Card King Hearts] @=? (moves $ setPlace (Place "b" [Card King Hearts] Nothing) $ setDraws [Card Ace Spade] $ move DrawFromDrawPile $ gameFor 2)
   , testCase "find straights" $
       [ [(Card Ten Heart), (Card Jack Heart), (Card Queen Heart)]
@@ -122,9 +122,9 @@ rummyTests = testGroup "Rummy"
   , testCase "meld gone from hand" $
       [ ] @=? (hand $ currentPlace $ doFirstMove $ setPhase Meld singleMeldGame)
   , testCase "meld wins game" $
-      Win @=? (phase $ doMove ((allMoves $ setPhase Meld singleMeldGame) !! 0) singleMeldGame)
+      Win @=? (phase $ play ((allMoves $ setPhase Meld singleMeldGame) !! 0) singleMeldGame)
   , testCase "melds are merged" $
-      [ sort (singleMeld ++ mergableMeld) ] @=? (melds $ table $ doMove ((allMoves $ setPhase Meld singleMeldGame) !! 0) $ setMelds [ mergableMeld ] singleMeldGame)
+      [ sort (singleMeld ++ mergableMeld) ] @=? (melds $ table $ play ((allMoves $ setPhase Meld singleMeldGame) !! 0) $ setMelds [ mergableMeld ] singleMeldGame)
   , testCase "no meld if no discard" $
       (sort [
           (DiscardCard (Card Three Club))

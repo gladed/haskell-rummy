@@ -22,6 +22,7 @@ library
                      , random >= 1.1
                      , array >= 0.5
                      , containers >= 0.4
+                     , lens-simple >= 0.1
 
 executable card
   hs-source-dirs:      src
