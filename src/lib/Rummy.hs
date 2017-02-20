@@ -16,12 +16,12 @@ data Game = Game {
   , rndGen   :: StdGen  -- ^ Random number generator (updated after random events)
   }
 
-places_ :: Lens' Game [Place]
-places_ = lens places (\g newPlaces -> g { places = newPlaces })
-
--- | Lens for current places
+-- | Lens for current place
 current :: Lens' Game Place
 current = places_ . head_
+
+places_ :: Lens' Game [Place]
+places_ = lens places (\g newPlaces -> g { places = newPlaces })
 
 hand_ :: Lens' Game Pile
 hand_ = current . (lens hand (\p h -> p { hand = h }))
@@ -47,9 +47,10 @@ instance Show Game where
 
 -- | Phases of play for each player
 data Phase =
-    Draw    -- ^ Player must draw from discard or from draw pile
+    Start   -- ^ Player must draw from discard or from draw pile
   | Meld    -- ^ Player may play or add to any number of melds or discard
   | Win     -- ^ Game is over because current player has won
+  | Draw    -- ^ Game is over because nobody can win
   deriving (Eq, Show, Enum)
 
 -- | Player's current state in the game
@@ -66,7 +67,7 @@ type Pile = [Card]
 
 -- | Create a new ready-to-play game
 mkGame :: StdGen -> [String] -> Game
-mkGame gen names = deal $ Game (mkPlace <$> names) Draw [] [] Deck.pack gen
+mkGame gen names = deal $ Game (mkPlace <$> names) Start [] [] Deck.pack gen
 
 -- | Create an empty place for a player
 mkPlace :: String -> Place
@@ -102,8 +103,8 @@ addToDiscards c = over discards_ (\xs -> c:xs)
 
 -- | Advance turn to the next player
 nextTurn :: Action
-nextTurn g | isWin g = g -- ^ No change if win already
-nextTurn g = setPhase Draw . (over places_ rotate) 
+nextTurn g | isOver g = g -- ^ No change if game in terminal state
+nextTurn g = setPhase Start . (over places_ rotate) 
   . over current (\p -> p { discardTaken = Nothing }) $ g 
 
 -- | Pop first element and push onto back
@@ -155,9 +156,9 @@ data Move =
 -- | All legal moves
 allMoves :: Game -> [Move]
 allMoves g = sort $ case phase g of
-  Win -> []
-  Draw -> [DrawFromDraws, DrawFromDiscards]
-  Meld -> concat $ [meldMoves, addMoves, discardMoves] <*> [g]
+  Start -> [DrawFromDraws, DrawFromDiscards]
+  Meld  -> concat $ [meldMoves, addMoves, discardMoves] <*> [g]
+  _     -> []
 
 -- | All possible meld-playing moves
 meldMoves :: Game -> [Move]
@@ -222,9 +223,9 @@ class Play a where
 instance Play Move where
   play DrawFromDraws = setPhase Meld . drawToPlace
   play DrawFromDiscards = setPhase Meld . uncurry takeDiscard . drawFromDiscards
-  play (PlayMeld m) = checkWin . dropCards m . addMeld m
-  play (AddToMeld c m) = checkWin . dropCards [c] . addMeld m . dropMeld m
-  play (DiscardCard c) = nextTurn . checkWin . addToDiscards c . dropCards [c]
+  play (PlayMeld m) = checkState . dropCards m . addMeld m
+  play (AddToMeld c m) = checkState . dropCards [c] . addMeld m . dropMeld m
+  play (DiscardCard c) = nextTurn . checkState . addToDiscards c . dropCards [c]
 
 -- | Accept a card into current Place's hand from the discard pile
 takeDiscard :: Card -> Action
@@ -235,10 +236,10 @@ takeDiscard c = over current take where
 setPhase :: Phase -> Action
 setPhase p g = g { phase = p }
 
--- | Transition game to Win if the current player has no more cards
-checkWin :: Action
-checkWin g | (view hand_ g) == [] = setPhase Win g
-checkWin g = g
+-- | Transition game to Win or Draw if necessary
+checkState :: Action
+checkState g | (view hand_ g) == [] = setPhase Win g
+checkState g = g
 
 -- | Remove cards from the current place
 dropCards :: Pile -> Action
@@ -263,5 +264,9 @@ mergeMelds m1 (m2:ms)
     m1_2 = sort (m1 ++ m2)
 
 --- | True if game is in the win state for the current player
-isWin :: Game -> Bool
-isWin = (== Win) . phase
+isOver :: Game -> Bool
+isOver g = case phase g of
+  Win -> True
+  Draw -> True
+  _ -> False
+

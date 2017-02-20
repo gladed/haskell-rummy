@@ -146,11 +146,11 @@ rummyTests = testGroup "Rummy"
          $ setPlace (Place "b" [(Card Three Club), (Card Ace Heart)] [] (Just (Card Ace Heart)))
          $ gameFor 2)
 
-  , testCase "detect non-win" $
-      False @=? (isWin $ gameFor 2)
+  , testCase "detect non-over" $
+      False @=? (isOver $ gameFor 2)
 
-  , testCase "detect win" $
-      True @=? (isWin
+  , testCase "detect game over" $
+      True @=? (isOver
         $ doFirstMove
         $ setPhase Meld
         $ setPlace (Place "b" [(Card Ace Spade)] [] Nothing)

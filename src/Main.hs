@@ -22,7 +22,7 @@ userInputLoop g = do
   else do
     let userMove = moves !! (moveNum-1)
     let g2 = play userMove g
-    case (isWin g2, userMove) of
+    case (isOver g2, userMove) of
       (True, _) -> return g2
       (_, (DiscardCard _)) -> return g2
       _ -> userInputLoop g2
@@ -40,7 +40,8 @@ gameLoop :: Game -> IO ()
 gameLoop g = do
   putStrLn "\n*** NEW TURN *** "
   g2 <- userInputLoop g
-  if (isWin g2) then putStrLn "Game over!" else gameLoop g2
+  if (isOver g2) then putStrLn "Game over!" else gameLoop g2
+
 
 presentGame :: Game -> String
 presentGame g = 
