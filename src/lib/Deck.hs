@@ -17,7 +17,7 @@ instance Ord Card where
     | otherwise = compare s1 s2
 
 instance Show Card where
-  show (Card v s) = (show v) ++ " of " ++ (show s) ++ "s"
+  show (Card v s) = show v ++ " of " ++ show s ++ "s"
 
 data Suit = 
     Club
@@ -61,7 +61,7 @@ shuffle xs = do
   where
     len = length xs
     newArray :: Int -> [a] -> IO (IOArray Int a)
-    newArray len xs = newListArray (1, len) xs
+    newArray len = newListArray (1, len)
 
 shuffleGen' :: RandomGen g => (Map Int a, g) -> (Int, a) -> (Map Int a, g)
 shuffleGen' (m, gen) (i, x) = ((insert j x . insert i (m ! j)) m, gen') where

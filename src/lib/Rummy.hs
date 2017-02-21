@@ -20,11 +20,11 @@ data Game = Game {
 -- StdGen is not showable so show Game without it
 instance Show Game where
   show g = "Game {"
-    ++ "phase = " ++ (show $ phase g)
-    ++ ", places = " ++ (show $ places g)
-    ++ ", melds = " ++ (show $ melds g)
-    ++ ", draws = " ++ (show $ draws g)
-    ++ ", discards = " ++ (show $ discards g)
+    ++ "phase = " ++ show (phase g)
+    ++ ", places = " ++ show (places g)
+    ++ ", melds = " ++ show (melds g)
+    ++ ", draws = " ++ show (draws g)
+    ++ ", discards = " ++ show (discards g)
     ++ "}"
 
 -- | Phases of play for each player
@@ -54,11 +54,11 @@ current = places_ . head_
 
 -- | Lens on current player's hand
 hand_ :: Lens' Game Pile
-hand_ = current . (lens hand (\p h -> p { hand = h }))
+hand_ = current . lens hand (\p h -> p { hand = h })
 
 -- | A lens on the head of a list
 head_ :: Lens' [a] a
-head_ = lens head (\xs x -> x:(tail xs))
+head_ = lens head (\xs x -> x:tail xs)
 
 places_ :: Lens' Game [Place]
 places_ = lens places (\g newPlaces -> g { places = newPlaces })
@@ -87,11 +87,11 @@ deal game
     | numPlaces game <= 4 = dealCards 7 game -- 3-4 players get 7 cards each
     | otherwise = error $ "min 2, max 4 players; got " ++ show (numPlaces game)
   where
-    dealCards numCards = drawToDiscard . nextTurn . (dealPlaces numCards)
+    dealCards numCards = drawToDiscard . nextTurn . dealPlaces numCards
 
 -- | Deal all players the specified number of cards
 dealPlaces :: Int -> Action
-dealPlaces numCards g = repeatAction (numPlaces g) (nextTurn . (repeatAction numCards drawToPlace)) g
+dealPlaces numCards g = repeatAction (numPlaces g) (nextTurn . repeatAction numCards drawToPlace) g
 
 -- | An action that repeats another one n times
 repeatAction :: Int -> Action -> Action
@@ -109,7 +109,7 @@ addToDiscards c = over discards_ (\xs -> c:xs)
 nextTurn :: Action
 nextTurn g | isOver g = g               -- ^ Already terminal
   | shuffles g > 2 = g { phase = Draw } -- ^ Stalemate if too many shuffles
-  | otherwise = setPhase Start . (over places_ rotate) 
+  | otherwise = setPhase Start . over places_ rotate 
       . over current (\p -> p { discardTaken = Nothing }) $ g 
 
 -- | If game isn't terminal then disable rummy bit for the current place
@@ -127,13 +127,13 @@ drawToPlace = uncurry takeCard . drawFromDraws where
 
 -- | Take a card out of draw pile, shuffling discards if necessary
 drawFromDraws :: Game -> (Card, Game)
-drawFromDraws g = case (view draws_ g) of
-  [] -> (drawFromDraws $ shuffleDiscards g) -- ^ No cards. Shuffle and try again. 
-  (d:ds) -> (d, over draws_ (\_ -> ds) g)   -- ^ Take top card from draw pile
+drawFromDraws g = case view draws_ g of
+  [] -> drawFromDraws $ shuffleDiscards g -- ^ No cards. Shuffle and try again. 
+  (d:ds) -> (d, over draws_ (const ds) g) -- ^ Take top card from draw pile
 
 -- | Shuffle discard pile and replace draw pile with it
 shuffleDiscards :: Action
-shuffleDiscards g = g { draws = newDrawPile, discards = [], shuffles = (shuffles g) + 1, 
+shuffleDiscards g = g { draws = newDrawPile, discards = [], shuffles = shuffles g + 1, 
     rndGen = newGen }
   where
     (newDrawPile, newGen) = shuffleGen (rndGen g) (view discards_ g)
@@ -177,18 +177,18 @@ allMelds cs = filter isMeld $ subsequences sorted where
 
 -- | True if (sorted) pile forms a meld (3+ cards, straight or of a kind)
 isMeld :: Pile -> Bool
-isMeld cs = (3 <= (length $ take 3 cs)) && (isRun cs || isKind cs)
+isMeld cs = (3 <= length (take 3 cs)) && (isRun cs || isKind cs)
 
 -- | True if the move, applied to a game, still allows discard
 canDiscardAfter :: Game -> Move -> Bool
 canDiscardAfter g m = canDiscard $ play m g where
   canDiscard g = case view hand_ g of
-    (c:[]) -> (isDiscardable g c) || any (isAddToMeldOf c) (addMoves g)
+    [c] -> isDiscardable g c || any (isAddToMeldOf c) (addMoves g)
     _ -> True
 
 -- | True if the specific card is legal to discard from the current hand
 isDiscardable :: Game -> Card -> Bool
-isDiscardable g c = Just c /= (discardTaken $ view current g)
+isDiscardable g c = Just c /= discardTaken (view current g)
 
 -- | True if the move is an AddToMeld using the specified card
 isAddToMeldOf :: Card -> Move -> Bool
@@ -198,22 +198,22 @@ isAddToMeldOf _ _ = False
 -- | True if (sorted) cards found are in a row and same suit
 isRun :: Pile -> Bool
 isRun [] = False
-isRun (_:[]) = True
+isRun [_] = True
 isRun (c1:c2:cs) =
-     (suit c1) == (suit c2)            -- Suits match
+     suit c1 == suit c2                -- Suits match
   && (value c1 /= (maxBound :: Value)) -- Value can increase
-  && ((succ $ value c1) == value c2)   -- Value does increase
-  && (isRun $ c2:cs)                   -- The rest are run-meldy too
+  && (succ (value c1) == value c2)     -- Value does increase
+  && isRun (c2:cs)                     -- The rest are run-meldy too
 
 -- | True if cards are all same kind
 isKind :: Pile -> Bool
 isKind [] = False
-isKind ((Card v _):cs) = all (\c -> (value c) == v) cs
+isKind (Card v _:cs) = all (\c -> value c == v) cs
 
 -- | All possible add-to-meld moves
 addMoves :: Game -> [Move]
 addMoves g = filter (canDiscardAfter g) $
-    filter isValidAdd ((fmap AddToMeld (view hand_ g)) <*> (melds g))
+    filter isValidAdd (fmap AddToMeld (view hand_ g) <*> melds g)
   where
     isValidAdd (AddToMeld c ms) = isMeld $ sort (c:ms)
 
@@ -236,7 +236,7 @@ instance Play Move where
 -- | Accept a card into current Place's hand from the discard pile
 takeDiscard :: Card -> Action
 takeDiscard c = over current take where
-  take p = p { hand = c:(hand p), publics = c:(publics p), discardTaken = Just c }
+  take p = p { hand = c:hand p, publics = c:publics p, discardTaken = Just c }
 
 -- | Transition game to specified phase
 setPhase :: Phase -> Action
@@ -244,17 +244,17 @@ setPhase p g = g { phase = p }
 
 -- | Transition game to Win or Draw if necessary
 checkState :: Action
-checkState g | (view hand_ g) == [] = setPhase Win g
+checkState g | null (view hand_ g) = setPhase Win g
 checkState g = g
 
 -- | Remove cards from the current place
 dropCards :: Pile -> Action
 dropCards cs = over current drop where
-  drop p = p { hand = (hand p) \\ cs, publics = (publics p) \\ cs }
+  drop p = p { hand = hand p \\ cs, publics = publics p \\ cs }
 
 -- | Remove a single meld from
 dropMeld :: Pile -> Action
-dropMeld m g = g { melds = (delete m (melds g)) }
+dropMeld m g = g { melds = delete m (melds g) }
 
 -- | Put a new meld into play
 addMeld :: Pile -> Action
@@ -264,8 +264,8 @@ addMeld m g = g { melds = mergeMelds m (melds g) }
 mergeMelds :: Pile -> [Pile] -> [Pile]
 mergeMelds m1 [] = [m1]
 mergeMelds m1 (m2:ms)
-    | isMeld (m1_2) = mergeMelds m1_2 ms
-    | otherwise = m2:(mergeMelds m1 ms)
+    | isMeld m1_2 = mergeMelds m1_2 ms
+    | otherwise = m2:mergeMelds m1 ms
   where
     m1_2 = sort (m1 ++ m2)
 
@@ -280,7 +280,7 @@ isOver g = case phase g of
 score :: Game -> [(String, Int)]
 score g 
     | phase g == Win = (name (view current g), maybeDouble $ allPoints g):loserPoints
-    | otherwise = fmap noPoints $ places g
+    | otherwise = noPoints <$> places g
   where
     noPoints p = (name p, 0)
     maybeDouble = if rummy (view current g) then (*2) else id
@@ -288,10 +288,10 @@ score g
 
 -- | Points present in all hands   
 allPoints :: Game -> Int
-allPoints = foldl (+) 0 . fmap points . concat . fmap hand . places
+allPoints = sum . fmap points . concatMap hand . places
 
 -- | The number of points for a card
 points :: Card -> Int
 points c 
-  | (value c) >= Jack = 10
-  | otherwise = 1 + (fromEnum $ value c)
+  | value c >= Jack = 10
+  | otherwise = 1 + fromEnum (value c)
