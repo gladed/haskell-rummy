@@ -20,7 +20,8 @@ In addition, there is an interactive text version of the game. It assumes two pl
 * Try out UI/web frameworks, or expose games through a REST API.
 
 ## Cheat-Sheet
-    stack test        # Run tests
-    stack build       # Create an executable
-    stack exec card   # Run the executable after building it.
-    stack ghci        # Open REPL to play with things
+    stack test       # Run tests
+    stack build      # Create an executable
+    stack exec card  # Run the executable after building it.
+    stack ghci       # Open REPL to play with things
+    hlint src        # Find and remove a bunch of stupidity

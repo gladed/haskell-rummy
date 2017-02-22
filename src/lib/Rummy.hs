@@ -25,6 +25,7 @@ instance Show Game where
     ++ ", melds = " ++ show (melds g)
     ++ ", draws = " ++ show (draws g)
     ++ ", discards = " ++ show (discards g)
+    ++ ", shuffles = " ++ show (shuffles g)
     ++ "}"
 
 -- | Phases of play for each player
