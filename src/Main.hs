@@ -7,25 +7,31 @@ import Data.List
 import Text.Read (readMaybe)
 import System.IO
 
+type Strategy = Game -> IO (Move)
 
-userInputStrategy :: Game -> IO Game
-userInputStrategy = userInputLoop
+basicStrategy :: Strategy
+basicStrategy g = do
+  let moves = allMoves g
+  return $ basicMove moves g
 
-userInputLoop :: Game -> IO Game
-userInputLoop g = do
+basicMove :: [Move] -> Game -> Move
+basicMove moves@(DrawFromDraws:_) g =
+  if meldable (head $ discards g) g then moves !! 1
+  else head moves
+basicMove moves _ = head moves
+
+meldable :: Card -> Game -> Bool
+meldable c g = any (\m -> (isMeld (sort (c:m)))) (melds g)
+
+userInputStrategy :: Strategy
+userInputStrategy g = do
   let moves = allMoves g  
   putStrLn $ presentGame g
   moveNum <- getLineInt "Your move?"
-  if moveNum > length moves then do
-    putStrLn "\n*** Invalid selection"
-    userInputLoop g
-  else do
-    let userMove = moves !! (moveNum-1)
-    let g2 = play userMove g
-    case (isOver g2, userMove) of
-      (True, _) -> return g2
-      (_, DiscardCard _) -> return g2
-      _ -> userInputLoop g2
+  if moveNum > (length moves) then do
+    putStrLn $ "\n*** Invalid selection"
+    userInputStrategy g
+  else return $ moves !! (moveNum-1)
 
 getLineInt :: String -> IO Int
 getLineInt prompt = do  
@@ -36,12 +42,23 @@ getLineInt prompt = do
     Nothing -> putStrLn "Try again" >> getLineInt prompt
     Just x -> return x
 
-gameLoop :: Game -> IO () 
-gameLoop g = do
-  putStrLn "\n*** NEW TURN *** "
-  g2 <- userInputLoop g
-  if isOver g2 then putStrLn ("Game over! Scores: " ++ show (score g2)) else gameLoop g2
+-- | Execute moves until next player or game over
+playerLoop :: Strategy -> Game -> IO (Game)
+playerLoop s g = do
+  let player = name $ head $ places $ g
+  m <- s g
+  putStrLn $ "Player " ++ player ++ ": " ++ (show m)
+  let g2 = play m g
+  if isOver g2 || (player /= (name $ head $ places $ g2))
+  then return g2
+  else playerLoop s g2
 
+gameLoop :: [Strategy] -> Game -> IO (Game)
+gameLoop (s:ss) g = do
+  putStrLn "\n*** NEW TURN ***"
+  g2 <- playerLoop s g
+  if (isOver g2) then return g2
+  else gameLoop (ss ++ [s]) g2
 
 presentGame :: Game -> String
 presentGame g = 
@@ -68,5 +85,5 @@ main :: IO ()
 main = do
   gen <- getStdGen
   let game = mkGame gen ["Anna", "Barry"]
-  gameLoop game
-
+  endGame <- gameLoop [userInputStrategy, basicStrategy] game
+  putStrLn ("Game over! Scores: " ++ (show $ score endGame))

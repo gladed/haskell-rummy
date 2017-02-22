@@ -91,7 +91,8 @@ deal game
 
 -- | Deal all players the specified number of cards
 dealPlaces :: Int -> Action
-dealPlaces numCards g = repeatAction (numPlaces g) (nextTurn . repeatAction numCards drawToPlace) g
+dealPlaces numCards g = repeatAction (numPlaces g) dealPlace g where
+  dealPlace = nextTurn . repeatAction numCards drawToPlace
 
 -- | An action that repeats another one n times
 repeatAction :: Int -> Action -> Action
